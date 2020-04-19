@@ -3,29 +3,33 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/face.hpp>
 
-#include <iostream>
-#include <cstdio>
-#include <opencv2/imgproc.hpp>
-
 #include "eos/core/Image.hpp"
 #include "eos/core/image/opencv_interop.hpp"
 #include "eos/core/Landmark.hpp"
 #include "eos/core/LandmarkMapper.hpp"
 #include "eos/core/read_pts_landmarks.hpp"
 #include "eos/core/write_obj.hpp"
-#include "eos/fitting/RenderingParameters.hpp"
-#include "eos/fitting/linear_shape_fitting.hpp"
-#include "eos/fitting/orthographic_camera_estimation_linear.hpp"
+#include "eos/fitting/fitting.hpp"
+#include "eos/morphablemodel/Blendshape.hpp"
 #include "eos/morphablemodel/MorphableModel.hpp"
+#include "eos/render/draw_utils.hpp"
 #include "eos/render/texture_extraction.hpp"
+#include "eos/cpp17/optional.hpp"
 
 #include "Eigen/Core"
 
 #include "boost/filesystem.hpp"
 #include "boost/program_options.hpp"
 
+#include "opencv2/core/core.hpp"
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+
 #include <iostream>
+#include <string>
 #include <vector>
+
+#include <chrono>
 
 using namespace eos;
 namespace po = boost::program_options;
@@ -34,6 +38,7 @@ using eos::core::Landmark;
 using eos::core::LandmarkCollection;
 using Eigen::Vector2f;
 using Eigen::Vector4f;
+using cv::Mat;
 using std::cout;
 using std::endl;
 using std::string;
@@ -95,6 +100,21 @@ namespace {
             return EXIT_FAILURE;
         }
 
+        // These two are used to fit the front-facing contour to the ibug contour landmarks:
+        const fitting::ModelContour model_contour = fitting::ModelContour::load("../share/sfm_model_contours.json");
+        const fitting::ContourLandmarks ibug_contour = fitting::ContourLandmarks::load("../share/ibug_to_sfm.txt");
+
+        // The edge topology is used to speed up computation of the occluding face contour fitting:
+        const morphablemodel::EdgeTopology edge_topology = morphablemodel::load_edge_topology(
+                "../share/sfm_3448_edge_topology.json");
+
+        const vector<morphablemodel::Blendshape> blendshapes = morphablemodel::load_blendshapes(
+                "../share/expression_blendshapes_3448.bin");
+
+        morphablemodel::MorphableModel morphable_model_with_expressions(
+                morphable_model.get_shape_model(), blendshapes, morphable_model.get_color_model(), cpp17::nullopt,
+                morphable_model.get_texture_coordinates());
+
         for (;;) {
             capture >> frame;
             if (frame.empty())
@@ -112,14 +132,14 @@ namespace {
 
             if (success) {
                 // If successful, render the landmarks on the face
-                for (int i = 0; i < landmarksByFace.size(); i++) {
-                    drawFacemarks(frame, landmarksByFace[i], Scalar(0, 0, 255));
-                }
+                drawFacemarks(frame, landmarksByFace[0], Scalar(0, 0, 255));
             }
 
             // start fitting process
             // todo: do fitting of face model here
             if (success) {
+                auto start = std::chrono::high_resolution_clock::now();
+
                 // copy landmark to eigen model
                 LandmarkCollection<Eigen::Vector2f> landmarks;
                 for (int i = 0; i < landmarksByFace[0].size(); i++) {
@@ -130,48 +150,41 @@ namespace {
                     landmarks.emplace_back(landmark);
                 }
 
-                // start fitting
-                // These will be the final 2D and 3D points used for the fitting:
-                vector<Vector4f> model_points; // the points in the 3D shape model
-                vector<int> vertex_indices;    // their vertex indices
-                vector<Vector2f> image_points; // the corresponding 2D landmark points
+                Mat outimg = frame.clone();
 
-                // Sub-select all the landmarks which we have a mapping for (i.e. that are defined in the 3DMM):
-                for (int i = 0; i < landmarks.size(); ++i) {
-                    auto converted_name = landmark_mapper.convert(landmarks[i].name);
-                    if (!converted_name) { // no mapping defined for the current landmark
-                        continue;
-                    }
-                    int vertex_idx = std::stoi(converted_name.value());
-                    auto vertex = morphable_model.get_shape_model().get_mean_at_point(vertex_idx);
-                    model_points.emplace_back(Vector4f(vertex.x(), vertex.y(), vertex.z(), 1.0f));
-                    vertex_indices.emplace_back(vertex_idx);
-                    image_points.emplace_back(landmarks[i].coordinates);
-                }
-
-                // Estimate the camera (pose) from the 2D - 3D point correspondences
-                fitting::ScaledOrthoProjectionParameters pose =
-                        fitting::estimate_orthographic_projection_linear(image_points, model_points, true, frame.rows);
-                fitting::RenderingParameters rendering_params(pose, frame.cols, frame.rows);
+                // Fit the model, get back a mesh and the pose:
+                core::Mesh mesh;
+                fitting::RenderingParameters rendering_params;
+                std::tie(mesh, rendering_params) = fitting::fit_shape_and_pose(
+                        morphable_model_with_expressions, landmarks, landmark_mapper, frame.cols, frame.rows,
+                        edge_topology,
+                        ibug_contour, model_contour, 5, cpp17::nullopt, 30.0f);
 
                 // The 3D head pose can be recovered as follows:
-                const float yaw_angle = glm::degrees(glm::yaw(rendering_params.get_rotation()));
+                float yaw_angle = glm::degrees(glm::yaw(rendering_params.get_rotation()));
                 // and similarly for pitch and roll.
 
-                // Estimate the shape coefficients by fitting the shape to the landmarks:
+                // Extract the texture from the image using given mesh and camera parameters:
                 const Eigen::Matrix<float, 3, 4> affine_from_ortho =
                         fitting::get_3x4_affine_camera_matrix(rendering_params, frame.cols, frame.rows);
-                const vector<float> fitted_coeffs = fitting::fit_shape_to_landmarks_linear(
-                        morphable_model.get_shape_model(), affine_from_ortho, image_points, vertex_indices);
 
-                // Obtain the full mesh with the estimated coefficients:
-                const core::Mesh mesh = morphable_model.draw_sample(fitted_coeffs, vector<float>());
+                auto finish = std::chrono::high_resolution_clock::now();
 
-                // Extract the texture from the image using given mesh and camera parameters:
-                const core::Image4u isomap = render::extract_texture(mesh, affine_from_ortho, core::from_mat(frame));
+                // Draw the fitted mesh as wireframe, and save the image:
+                render::draw_wireframe(outimg, mesh, rendering_params.get_modelview(),
+                                       rendering_params.get_projection(),
+                                       fitting::get_opencv_viewport(frame.cols, frame.rows));
+
+                // const core::Image4u isomap = render::extract_texture(mesh, affine_from_ortho, core::from_mat(image));
+
+                std::chrono::duration<double> elapsed = finish - start;
+                std::cout << "Elapsed time: " << elapsed.count() << " s\n";
 
                 // display isomap
-                imshow("isomap", core::to_mat(isomap));
+                imshow("isomap", outimg); //core::to_mat(isomap));
+
+                // display 3d model
+
             }
 
             // display frame
