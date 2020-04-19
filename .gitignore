@@ -1,3 +1,12 @@
 # Ignore (optional) configuration files with user-specific paths:
 initial_cache.cmake
 setup.cfg
+cmake-build-debug
+.idea
+examples/data/lbfmodel.yaml
+examples/data/haarcascade_frontalface_alt2.xml
+examples/fit-model
+examples/out.mtl
+examples/out.obj
+examples/out.png
+examples/out.isomap.png
