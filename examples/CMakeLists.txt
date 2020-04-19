@@ -25,6 +25,11 @@ endif ()
 find_package(Boost 1.50.0 COMPONENTS system filesystem program_options REQUIRED)
 message(STATUS "Boost found at ${Boost_INCLUDE_DIRS}")
 
+# SDL include
+find_package(SDL2 REQUIRED)
+include_directories(${SDL2_INCLUDE_DIRS})
+message(STATUS "SDL2 found at ${SDL2_INCLUDE_DIRS}")
+
 # Simple model fitting (orthographic camera & shape to landmarks) example:
 add_executable(fit-model-simple fit-model-simple.cpp)
 target_link_libraries(fit-model-simple eos ${OpenCV_LIBS} ${Boost_LIBRARIES})
@@ -37,11 +42,11 @@ target_link_libraries(fit-model eos ${OpenCV_LIBS} ${Boost_LIBRARIES})
 target_link_libraries(fit-model "$<$<CXX_COMPILER_ID:GNU>:-pthread>$<$<CXX_COMPILER_ID:Clang>:-pthreads>")
 target_include_directories(fit-model PUBLIC ${OpenCV_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
 
-# Model fitting example that fits orthographic camera, shape, blendshapes, and contours:
+# Relatime Model fitting example that fits orthographic camera, shape, blendshapes, and contours:
 add_executable(fit-model-realtime fit-model-realtime.cpp)
-target_link_libraries(fit-model-realtime eos ${OpenCV_LIBS} ${Boost_LIBRARIES})
+target_link_libraries(fit-model-realtime eos ${OpenCV_LIBS} ${Boost_LIBRARIES} ${SDL2_LIBRARIES})
 target_link_libraries(fit-model-realtime "$<$<CXX_COMPILER_ID:GNU>:-pthread>$<$<CXX_COMPILER_ID:Clang>:-pthreads>")
-target_include_directories(fit-model-realtime PUBLIC ${OpenCV_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
+target_include_directories(fit-model-realtime PUBLIC ${OpenCV_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${SDL2_INCLUDE_DIRS})
 
 # Model fitting example that fits orthographic camera, shape, blendshapes, and contours to multiple images:
 add_executable(fit-model-multi fit-model-multi.cpp)

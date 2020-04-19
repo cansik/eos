@@ -31,6 +31,8 @@
 
 #include <chrono>
 
+#include <SDL2/SDL.h>
+
 using namespace eos;
 namespace po = boost::program_options;
 namespace fs = boost::filesystem;
@@ -114,6 +116,12 @@ namespace {
         morphablemodel::MorphableModel morphable_model_with_expressions(
                 morphable_model.get_shape_model(), blendshapes, morphable_model.get_color_model(), cpp17::nullopt,
                 morphable_model.get_texture_coordinates());
+
+        // prepare sdl
+        if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+            printf("error initializing SDL: %s\n", SDL_GetError());
+        }
+        SDL_Window *win = SDL_CreateWindow("Preview", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 500, 500, 0);
 
         for (;;) {
             capture >> frame;
