@@ -120,6 +120,8 @@ namespace {
             if (frame.empty())
                 break;
 
+            Mat outimg = frame.clone();
+
             // detect single face
             vector<Rect> faces;
             vector<vector<Point2f> > landmarksByFace;
@@ -150,8 +152,6 @@ namespace {
                     landmarks.emplace_back(landmark);
                 }
 
-                Mat outimg = frame.clone();
-
                 // Fit the model, get back a mesh and the pose:
                 core::Mesh mesh;
                 fitting::RenderingParameters rendering_params;
@@ -175,16 +175,18 @@ namespace {
                                        rendering_params.get_projection(),
                                        fitting::get_opencv_viewport(frame.cols, frame.rows));
 
-                // const core::Image4u isomap = render::extract_texture(mesh, affine_from_ortho, core::from_mat(image));
+                const core::Image4u isomap =
+                        render::extract_texture(mesh, affine_from_ortho, core::from_mat(frame), true);
 
                 std::chrono::duration<double> elapsed = finish - start;
                 std::cout << "Elapsed time: " << elapsed.count() << " s\n";
 
-                // display isomap
+                // display output
                 imshow("isomap", outimg); //core::to_mat(isomap));
 
-                // display 3d model
-
+                // store 3d model
+                core::write_textured_obj(mesh, "florian.obj");
+                cv::imwrite("florian.isomap.png", core::to_mat(isomap));
             }
 
             // display frame
