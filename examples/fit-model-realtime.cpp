@@ -91,6 +91,11 @@ namespace {
     unsigned int VBO, VAO, EBO;
     int shaderProgram;
 
+    float faceVertices[3448];
+    int faceTriangles[6736 * 3];
+
+    bool displayFace = false;
+
     void help(char **av) {
         cout
                 << "The program captures frames from a video file, image sequence (01.jpg, 02.jpg ... 10.jpg) or camera connected to your computer."
@@ -203,7 +208,7 @@ namespace {
 
 
         // uncomment this call to draw in wireframe polygons.
-        //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     }
 
     void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
@@ -286,7 +291,7 @@ namespace {
 
             // start fitting process
             // todo: do fitting of face model here
-            if (success && false) {
+            if (success && true) {
                 auto start = std::chrono::high_resolution_clock::now();
 
                 // copy landmark to eigen model
@@ -318,22 +323,52 @@ namespace {
                 auto finish = std::chrono::high_resolution_clock::now();
 
                 // Draw the fitted mesh as wireframe, and save the image:
+                /*
                 render::draw_wireframe(outimg, mesh, rendering_params.get_modelview(),
                                        rendering_params.get_projection(),
                                        fitting::get_opencv_viewport(frame.cols, frame.rows));
 
                 const core::Image4u isomap =
                         render::extract_texture(mesh, affine_from_ortho, core::from_mat(frame), true);
+                        */
 
                 std::chrono::duration<double> elapsed = finish - start;
                 std::cout << "Elapsed time: " << elapsed.count() << " s\n";
 
                 // display output
-                imshow("isomap", outimg); //core::to_mat(isomap));
+                // imshow("isomap", outimg); //core::to_mat(isomap));
 
                 // store 3d model
-                core::write_textured_obj(mesh, "florian.obj");
-                cv::imwrite("florian.isomap.png", core::to_mat(isomap));
+                // core::write_textured_obj(mesh, "florian.obj");
+                // cv::imwrite("florian.isomap.png", core::to_mat(isomap));
+
+                // update vertices
+                cout << "Verts: " << mesh.vertices.size() << " Tri: " << mesh.tvi.size() << endl;
+
+                int i = 0;
+                for (auto v : mesh.vertices) {
+                    faceVertices[i++] = v.x() / 100.0;
+                    faceVertices[i++] = v.y() / 100.0;
+                    faceVertices[i++] = v.z() / 100.0;
+                }
+
+                i = 0;
+                for (auto v : mesh.tvi) {
+                    faceTriangles[i++] = v[0];
+                    faceTriangles[i++] = v[1];
+                    faceTriangles[i++] = v[2];
+                }
+
+                cout << "x: " << faceVertices[0] << " y: " << faceVertices[1] << " z: " << faceVertices[2] << endl;
+                cout << "t0: " << faceVertices[0] << " t1: " << faceVertices[1] << " t2: " << faceVertices[2] << endl;
+
+                glBindBuffer(GL_ARRAY_BUFFER, VBO);
+                glBufferData(GL_ARRAY_BUFFER, sizeof(faceVertices), faceVertices, GL_STATIC_DRAW);
+
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(faceTriangles), faceTriangles, GL_STATIC_DRAW);
+
+                displayFace = true;
             }
 
             // render 3d
@@ -344,8 +379,12 @@ namespace {
             glUseProgram(shaderProgram);
             glBindVertexArray(
                     VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
-            //glDrawArrays(GL_TRIANGLES, 0, 6);
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+            if (displayFace) {
+                glDrawElements(GL_TRIANGLES, 6736, GL_UNSIGNED_INT, 0);
+            } else {
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            }
             // glBindVertexArray(0); // no need to unbind it every time
 
             // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
