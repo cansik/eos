@@ -62,8 +62,8 @@ namespace {
 
     void processInput(GLFWwindow *window);
 
-    const unsigned int SCR_WIDTH = 800;
-    const unsigned int SCR_HEIGHT = 600;
+    const unsigned int SCR_WIDTH = 200;
+    const unsigned int SCR_HEIGHT = 200;
 
     const char *vertexShaderSource = "#version 330 core\n"
                                      "layout (location = 0) in vec3 aPos;\n"
@@ -310,8 +310,9 @@ namespace {
                 std::tie(mesh, rendering_params) = fitting::fit_shape_and_pose(
                         morphable_model_with_expressions, landmarks, landmark_mapper, frame.cols, frame.rows,
                         edge_topology,
-                        ibug_contour, model_contour, 5, cpp17::nullopt, 30.0f);
+                        ibug_contour, model_contour, 20, cpp17::nullopt, 30.0f);
 
+                /*
                 // The 3D head pose can be recovered as follows:
                 float yaw_angle = glm::degrees(glm::yaw(rendering_params.get_rotation()));
                 // and similarly for pitch and roll.
@@ -319,6 +320,7 @@ namespace {
                 // Extract the texture from the image using given mesh and camera parameters:
                 const Eigen::Matrix<float, 3, 4> affine_from_ortho =
                         fitting::get_3x4_affine_camera_matrix(rendering_params, frame.cols, frame.rows);
+                */
 
                 auto finish = std::chrono::high_resolution_clock::now();
 
@@ -347,9 +349,9 @@ namespace {
 
                 int i = 0;
                 for (auto v : mesh.vertices) {
-                    faceVertices[i++] = v.x() / 100.0;
-                    faceVertices[i++] = v.y() / 100.0;
-                    faceVertices[i++] = v.z() / 100.0;
+                    faceVertices[i++] = v.x() / 100.0f;
+                    faceVertices[i++] = v.y() / 100.0f;
+                    faceVertices[i++] = v.z() / 100.0f;
                 }
 
                 i = 0;
@@ -360,7 +362,8 @@ namespace {
                 }
 
                 cout << "x: " << faceVertices[0] << " y: " << faceVertices[1] << " z: " << faceVertices[2] << endl;
-                cout << "t0: " << faceVertices[0] << " t1: " << faceVertices[1] << " t2: " << faceVertices[2] << endl;
+                cout << "t0: " << faceTriangles[0] << " t1: " << faceTriangles[1] << " t2: " << faceTriangles[2]
+                     << endl;
 
                 glBindBuffer(GL_ARRAY_BUFFER, VBO);
                 glBufferData(GL_ARRAY_BUFFER, sizeof(faceVertices), faceVertices, GL_STATIC_DRAW);
@@ -381,7 +384,8 @@ namespace {
                     VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
 
             if (displayFace) {
-                glDrawElements(GL_TRIANGLES, 6736, GL_UNSIGNED_INT, 0);
+                glPointSize(5.0f);
+                glDrawElements(GL_POINTS, 6736 * 3, GL_UNSIGNED_INT, 0);
             } else {
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
             }
