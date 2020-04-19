@@ -68,6 +68,7 @@ namespace {
         string window_name = "video | q or esc to quit";
         cout << "press space to save a picture. q or esc to quit" << endl;
         namedWindow(window_name, WINDOW_KEEPRATIO); //resizable window;
+        namedWindow("isomap", WINDOW_KEEPRATIO); //resizable window;
         Mat frame, gray;
 
         // face detection and landmark extraction
@@ -123,10 +124,54 @@ namespace {
                 LandmarkCollection<Eigen::Vector2f> landmarks;
                 for (int i = 0; i < landmarksByFace[0].size(); i++) {
                     Landmark<Vector2f> landmark;
+                    landmark.name = std::to_string(i + 1);
                     landmark.coordinates[0] = landmarksByFace[0][i].x;
                     landmark.coordinates[1] = landmarksByFace[0][i].y;
                     landmarks.emplace_back(landmark);
                 }
+
+                // start fitting
+                // These will be the final 2D and 3D points used for the fitting:
+                vector<Vector4f> model_points; // the points in the 3D shape model
+                vector<int> vertex_indices;    // their vertex indices
+                vector<Vector2f> image_points; // the corresponding 2D landmark points
+
+                // Sub-select all the landmarks which we have a mapping for (i.e. that are defined in the 3DMM):
+                for (int i = 0; i < landmarks.size(); ++i) {
+                    auto converted_name = landmark_mapper.convert(landmarks[i].name);
+                    if (!converted_name) { // no mapping defined for the current landmark
+                        continue;
+                    }
+                    int vertex_idx = std::stoi(converted_name.value());
+                    auto vertex = morphable_model.get_shape_model().get_mean_at_point(vertex_idx);
+                    model_points.emplace_back(Vector4f(vertex.x(), vertex.y(), vertex.z(), 1.0f));
+                    vertex_indices.emplace_back(vertex_idx);
+                    image_points.emplace_back(landmarks[i].coordinates);
+                }
+
+                // Estimate the camera (pose) from the 2D - 3D point correspondences
+                fitting::ScaledOrthoProjectionParameters pose =
+                        fitting::estimate_orthographic_projection_linear(image_points, model_points, true, frame.rows);
+                fitting::RenderingParameters rendering_params(pose, frame.cols, frame.rows);
+
+                // The 3D head pose can be recovered as follows:
+                const float yaw_angle = glm::degrees(glm::yaw(rendering_params.get_rotation()));
+                // and similarly for pitch and roll.
+
+                // Estimate the shape coefficients by fitting the shape to the landmarks:
+                const Eigen::Matrix<float, 3, 4> affine_from_ortho =
+                        fitting::get_3x4_affine_camera_matrix(rendering_params, frame.cols, frame.rows);
+                const vector<float> fitted_coeffs = fitting::fit_shape_to_landmarks_linear(
+                        morphable_model.get_shape_model(), affine_from_ortho, image_points, vertex_indices);
+
+                // Obtain the full mesh with the estimated coefficients:
+                const core::Mesh mesh = morphable_model.draw_sample(fitted_coeffs, vector<float>());
+
+                // Extract the texture from the image using given mesh and camera parameters:
+                const core::Image4u isomap = render::extract_texture(mesh, affine_from_ortho, core::from_mat(frame));
+
+                // display isomap
+                imshow("isomap", core::to_mat(isomap));
             }
 
             // display frame
