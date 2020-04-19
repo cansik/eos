@@ -31,7 +31,8 @@
 
 #include <chrono>
 
-#include <SDL2/SDL.h>
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
 
 using namespace eos;
 namespace po = boost::program_options;
@@ -52,6 +53,10 @@ using namespace std;
 
 //hide the local functions in an anon namespace
 namespace {
+    GLFWwindow *window;
+
+    //void framebuffer_size_callback(GLFWwindow *window, int width, int height);
+
     void help(char **av) {
         cout
                 << "The program captures frames from a video file, image sequence (01.jpg, 02.jpg ... 10.jpg) or camera connected to your computer."
@@ -67,6 +72,42 @@ namespace {
                 << "\tYou can also pass the path to an image sequence and OpenCV will treat the sequence just like a video."
                 << endl
                 << "\texample: " << av[0] << " right%%02d.jpg" << endl;
+    }
+
+    int setup3dPreview() {
+        // Initialize the library
+        if (!glfwInit())
+            return -1;
+
+        // Define version and compatibility settings
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+
+        // Create a windowed mode window and its OpenGL context
+        window = glfwCreateWindow(640, 480, "Hello World", NULL, NULL);
+        if (!window) {
+            std::cout << "Failed to create GLFW window" << std::endl;
+            glfwTerminate();
+            return -1;
+        }
+
+        // Mathe the window's context current
+        glfwMakeContextCurrent(window);
+        //glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+
+        // Initialize the OpenGL API with GLAD
+        if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress)) {
+            std::cout << "Failed to initialize GLAD" << std::endl;
+            return -1;
+        }
+    }
+
+    void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
+        // make sure the viewport matches the new window dimensions; note that width
+        // and height will be significantly larger than specified on retina displays
+        glViewport(0, 0, width, height);
     }
 
     int process(VideoCapture &capture) {
@@ -117,11 +158,7 @@ namespace {
                 morphable_model.get_shape_model(), blendshapes, morphable_model.get_color_model(), cpp17::nullopt,
                 morphable_model.get_texture_coordinates());
 
-        // prepare sdl
-        if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-            printf("error initializing SDL: %s\n", SDL_GetError());
-        }
-        SDL_Window *win = SDL_CreateWindow("Preview", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 500, 500, 0);
+        setup3dPreview();
 
         for (;;) {
             capture >> frame;
@@ -147,7 +184,7 @@ namespace {
 
             // start fitting process
             // todo: do fitting of face model here
-            if (success && true) {
+            if (success && false) {
                 auto start = std::chrono::high_resolution_clock::now();
 
                 // copy landmark to eigen model
@@ -197,6 +234,11 @@ namespace {
                 cv::imwrite("florian.isomap.png", core::to_mat(isomap));
             }
 
+            // render 3d
+            glClear(GL_COLOR_BUFFER_BIT);
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+
             // display frame
             imshow(window_name, frame);
             char key = (char) waitKey(30); //delay N millis, usually long enough to display and capture input
@@ -216,6 +258,8 @@ namespace {
             }
         }
 
+        glfwDestroyWindow(window);
+        glfwTerminate();
         return EXIT_SUCCESS;
     }
 }
