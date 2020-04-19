@@ -7,6 +7,38 @@
 #include <cstdio>
 #include <opencv2/imgproc.hpp>
 
+#include "eos/core/Image.hpp"
+#include "eos/core/image/opencv_interop.hpp"
+#include "eos/core/Landmark.hpp"
+#include "eos/core/LandmarkMapper.hpp"
+#include "eos/core/read_pts_landmarks.hpp"
+#include "eos/core/write_obj.hpp"
+#include "eos/fitting/RenderingParameters.hpp"
+#include "eos/fitting/linear_shape_fitting.hpp"
+#include "eos/fitting/orthographic_camera_estimation_linear.hpp"
+#include "eos/morphablemodel/MorphableModel.hpp"
+#include "eos/render/texture_extraction.hpp"
+
+#include "Eigen/Core"
+
+#include "boost/filesystem.hpp"
+#include "boost/program_options.hpp"
+
+#include <iostream>
+#include <vector>
+
+using namespace eos;
+namespace po = boost::program_options;
+namespace fs = boost::filesystem;
+using eos::core::Landmark;
+using eos::core::LandmarkCollection;
+using Eigen::Vector2f;
+using Eigen::Vector4f;
+using std::cout;
+using std::endl;
+using std::string;
+using std::vector;
+
 using namespace cv;
 using namespace cv::face;
 using namespace std;
@@ -43,6 +75,25 @@ namespace {
         Ptr<Facemark> facemark = FacemarkLBF::create();
         facemark->loadModel("data/lbfmodel.yaml");
 
+        // face fitting stuff
+        cout << "loading morphable model..." << endl;
+        morphablemodel::MorphableModel morphable_model;
+        try {
+            morphable_model = morphablemodel::load_model("../share/sfm_shape_3448.bin");
+        } catch (const std::runtime_error &e) {
+            cout << "Error loading the Morphable Model: " << e.what() << endl;
+            return EXIT_FAILURE;
+        }
+
+        cout << "loading landmark mapper..." << endl;
+        core::LandmarkMapper landmark_mapper;
+        try {
+            landmark_mapper = core::LandmarkMapper("../share/ibug_to_sfm.txt");
+        } catch (const std::exception &e) {
+            cout << "Error loading the landmark mappings: " << e.what() << endl;
+            return EXIT_FAILURE;
+        }
+
         for (;;) {
             capture >> frame;
             if (frame.empty())
@@ -50,18 +101,31 @@ namespace {
 
             // detect single face
             vector<Rect> faces;
-            vector<vector<Point2f> > landmarks;
+            vector<vector<Point2f> > landmarksByFace;
 
             cvtColor(frame, gray, COLOR_BGR2GRAY);
             faceDetector.detectMultiScale(gray, faces);
 
             // extract landmarks
-            bool success = facemark->fit(frame, faces, landmarks);
+            bool success = facemark->fit(frame, faces, landmarksByFace);
 
             if (success) {
                 // If successful, render the landmarks on the face
-                for (int i = 0; i < landmarks.size(); i++) {
-                    drawFacemarks(frame, landmarks[i], Scalar(0, 0, 255));
+                for (int i = 0; i < landmarksByFace.size(); i++) {
+                    drawFacemarks(frame, landmarksByFace[i], Scalar(0, 0, 255));
+                }
+            }
+
+            // start fitting process
+            // todo: do fitting of face model here
+            if (success) {
+                // copy landmark to eigen model
+                LandmarkCollection<Eigen::Vector2f> landmarks;
+                for (int i = 0; i < landmarksByFace[0].size(); i++) {
+                    Landmark<Vector2f> landmark;
+                    landmark.coordinates[0] = landmarksByFace[0][i].x;
+                    landmark.coordinates[1] = landmarksByFace[0][i].y;
+                    landmarks.emplace_back(landmark);
                 }
             }
 
@@ -83,7 +147,8 @@ namespace {
                     break;
             }
         }
-        return 0;
+
+        return EXIT_SUCCESS;
     }
 }
 
