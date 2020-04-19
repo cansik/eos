@@ -29,6 +29,7 @@ message(STATUS "Boost found at ${Boost_INCLUDE_DIRS}")
 find_package(glfw3 3.3 REQUIRED)
 
 # glad
+include_directories(glad/include)
 add_subdirectory(glad/)
 
 # Simple model fitting (orthographic camera & shape to landmarks) example:
