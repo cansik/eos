@@ -2,6 +2,7 @@
 initial_cache.cmake
 setup.cfg
 cmake-build-debug
+cmake-build-release
 .idea
 examples/data/lbfmodel.yaml
 examples/data/haarcascade_frontalface_alt2.xml

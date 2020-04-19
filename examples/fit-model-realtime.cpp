@@ -77,7 +77,7 @@ namespace {
         Mat frame, gray;
 
         // face detection and landmark extraction
-        CascadeClassifier faceDetector("data/haarcascade_frontalface_alt2.xml");
+        CascadeClassifier faceDetector("data/haarcascade_frontalface_default.xml");
         Ptr<Facemark> facemark = FacemarkLBF::create();
         facemark->loadModel("data/lbfmodel.yaml");
 
@@ -139,7 +139,7 @@ namespace {
 
             // start fitting process
             // todo: do fitting of face model here
-            if (success) {
+            if (success && true) {
                 auto start = std::chrono::high_resolution_clock::now();
 
                 // copy landmark to eigen model
